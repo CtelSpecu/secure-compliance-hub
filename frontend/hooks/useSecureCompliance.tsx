@@ -5,21 +5,7 @@ import { ethers } from "ethers";
 import { useFhevm } from "../fhevm/useFhevm";
 import { useInMemoryStorage } from "./useInMemoryStorage";
 import { useMetaMaskEthersSigner } from "./metamask/useMetaMaskEthersSigner";
-// FhevmType enum for decryption
-enum FhevmType {
-  ebool = 0,
-  euint4 = 1,
-  euint8 = 2,
-  euint16 = 3,
-  euint32 = 4,
-  euint64 = 5,
-  euint128 = 6,
-  euint256 = 7,
-  eaddress = 8,
-  ebytes64 = 9,
-  ebytes128 = 10,
-  ebytes256 = 11,
-}
+import { FhevmDecryptionSignature } from "@/fhevm/FhevmDecryptionSignature";
 
 // Contract ABI for SecureCompliance
 const SECURE_COMPLIANCE_ABI = [
@@ -235,39 +221,48 @@ export function useSecureCompliance(props?: UseSecureComplianceProps) {
 
       try {
         let encryptedHandle: string;
-        let fhevmType: FhevmType;
 
         // Get the encrypted handle based on field type
         if (fieldType === "riskLevel") {
           encryptedHandle = await contractRef.current.getEncryptedRiskLevel(recordId);
-          fhevmType = FhevmType.euint8;
         } else if (fieldType === "status") {
           encryptedHandle = await contractRef.current.getEncryptedStatus(recordId);
-          fhevmType = FhevmType.euint8;
         } else {
           encryptedHandle = await contractRef.current.getEncryptedViolationCode(recordId);
-          fhevmType = FhevmType.euint32;
         }
 
-        setMessage("Requesting decryption signature...");
+        setMessage("Requesting wallet signature for decryption...");
 
-        // For now, return a mock decrypted value
-        // In production, use the FHEVM instance to decrypt with proper signature flow
-        // The actual decryption requires the full FHEVM signature flow
-        let mockValue: number;
-        if (fieldType === "riskLevel") {
-          // Return a mock risk level (0-3)
-          mockValue = Math.floor(Math.random() * 4);
-        } else if (fieldType === "status") {
-          // Return a mock status (0-2)
-          mockValue = Math.floor(Math.random() * 3);
-        } else {
-          // Return the original violation code for demo
-          mockValue = 1001;
+        // Get or create decryption signature (requires wallet signature)
+        const sig = await FhevmDecryptionSignature.loadOrSign(
+          fhevmInstance,
+          [contractAddress as `0x${string}`],
+          ethersSigner,
+          fhevmDecryptionSignatureStorage
+        );
+
+        if (!sig) {
+          throw new Error("Failed to get decryption signature");
         }
 
+        setMessage("Decrypting with FHEVM...");
+
+        // Call userDecrypt with the signature
+        const decryptedValues = await fhevmInstance.userDecrypt(
+          [{ handle: encryptedHandle, contractAddress: contractAddress as `0x${string}` }],
+          sig.privateKey,
+          sig.publicKey,
+          sig.signature,
+          sig.contractAddresses,
+          sig.userAddress,
+          sig.startTimestamp,
+          sig.durationDays
+        );
+
+        const clearValue = decryptedValues[encryptedHandle];
+        
         setMessage("Decryption successful!");
-        return mockValue;
+        return Number(clearValue);
       } catch (error) {
         console.error("Failed to decrypt:", error);
         setMessage(`Decryption error: ${(error as Error).message}`);
@@ -276,7 +271,7 @@ export function useSecureCompliance(props?: UseSecureComplianceProps) {
         setIsDecrypting(false);
       }
     },
-    [fhevmInstance, ethersSigner, contractAddress]
+    [fhevmInstance, ethersSigner, contractAddress, fhevmDecryptionSignatureStorage]
   );
 
   // Get all records
