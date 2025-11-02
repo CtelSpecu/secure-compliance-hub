@@ -9,6 +9,7 @@ const rel = "..";
 
 // <root>/packages/site/components
 const outdir = path.resolve("./abi");
+const frontendDir = path.resolve(".");
 
 if (!fs.existsSync(outdir)) {
   fs.mkdirSync(outdir);
@@ -159,4 +160,16 @@ export const ${CONTRACT_NAME}Addresses = {
     JSON.stringify(jsonData, null, 2),
     "utf-8"
   );
+
+  // Also copy JSON to public/abi for runtime loading
+  const publicAbiDir = path.join(frontendDir, "public", "abi");
+  if (!fs.existsSync(publicAbiDir)) {
+    fs.mkdirSync(publicAbiDir, { recursive: true });
+  }
+  fs.writeFileSync(
+    path.join(publicAbiDir, `${CONTRACT_NAME}.json`),
+    JSON.stringify(jsonData, null, 2),
+    "utf-8"
+  );
+  console.log(`Copied to ${path.join(publicAbiDir, `${CONTRACT_NAME}.json`)}`);
 }

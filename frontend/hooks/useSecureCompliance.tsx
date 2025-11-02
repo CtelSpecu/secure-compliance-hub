@@ -88,14 +88,28 @@ export function useSecureCompliance(props?: UseSecureComplianceProps) {
       }
 
       try {
-        // Try to load from ABI file which contains deployment address
+        // Try to load from ABI file which contains deployment addresses
         const response = await fetch("/abi/SecureCompliance.json");
         if (response.ok) {
           const data = await response.json();
-          if (data.address) {
+          // Check addresses object first (keyed by chainId)
+          if (data.addresses && data.addresses[chainId.toString()]) {
+            const addr = data.addresses[chainId.toString()];
+            // Check if address is valid (not zero address)
+            if (addr && addr !== "0x0000000000000000000000000000000000000000") {
+              CONTRACT_ADDRESSES[chainId] = addr;
+              setContractAddress(addr);
+              setIsDeployed(true);
+              console.log(`[useSecureCompliance] Loaded address for chainId ${chainId}: ${addr}`);
+              return;
+            }
+          }
+          // Fallback to single address field
+          if (data.address && data.address !== "0x0000000000000000000000000000000000000000") {
             CONTRACT_ADDRESSES[chainId] = data.address;
             setContractAddress(data.address);
             setIsDeployed(true);
+            console.log(`[useSecureCompliance] Loaded default address: ${data.address}`);
             return;
           }
         }
